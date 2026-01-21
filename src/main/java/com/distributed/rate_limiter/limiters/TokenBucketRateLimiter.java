@@ -1,5 +1,7 @@
 package com.distributed.rate_limiter.limiters;
 
+import lombok.Getter;
+
 public class TokenBucketRateLimiter {
 
     private final long ONE_SECOND_NS = 1_000_000_000L;
@@ -7,8 +9,8 @@ public class TokenBucketRateLimiter {
     private final long capacity;
     private final double refillRate;
 
-    private double currentTokens;
-    private long lastRefillTime;
+    @Getter private double currentTokens;
+    @Getter private long lastRefillTime;
 
     public TokenBucketRateLimiter(long capacity, double refillRate) {
         this.capacity = capacity;
