@@ -4,18 +4,29 @@ import com.distributed.rate_limiter.annotations.RateLimit;
 import com.distributed.rate_limiter.exceptions.RateLimitExceededException;
 import com.distributed.rate_limiter.limiters.TokenBucketRateLimiter;
 import com.github.benmanes.caffeine.cache.Cache;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
@@ -24,19 +35,38 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RateLimitAspect {
 
     @Autowired
-    Cache<String, TokenBucketRateLimiter> cache;
+    StringRedisTemplate template;
+
+    private DefaultRedisScript<Long> redisScript;
+
+    @PostConstruct
+    public void init() {
+        redisScript = new DefaultRedisScript<>();
+        redisScript.setScriptSource(new ResourceScriptSource(new ClassPathResource("scripts/rate_limiter.lua")));
+        redisScript.setResultType(Long.class);
+    }
 
     @Around("@annotation(rateLimitAnnotation)")
     public Object checkRateLimit(ProceedingJoinPoint joinPoint, RateLimit rateLimitAnnotation) throws Throwable {
         HttpServletRequest httpServletRequest = getHttpServletRequest();
         String ipAddress = httpServletRequest != null ? httpServletRequest.getRemoteAddr() : "";
         String endpoint = joinPoint.getSignature().toString();
-        String signature = endpoint + "|" + ipAddress;
-        var rateLimiter = cache.get(signature, k -> new TokenBucketRateLimiter(rateLimitAnnotation.capacity(), rateLimitAnnotation.refillRate()));
-        if (!rateLimiter.tryAcquire()) {
-            log.warn("Too many requests from IP {} for endpoint {} ", ipAddress, endpoint);
+
+        String key = "rate_limit:" + endpoint + ":" + ipAddress;
+        List<String> keys = Collections.singletonList(key);
+
+        String capacity = String.valueOf(rateLimitAnnotation.capacity());
+        String refillRate = String.valueOf(rateLimitAnnotation.refillRate());
+        String now = String.valueOf(Instant.now().getEpochSecond());
+        String requestedTokens = "1";
+
+        Long isAllowed = template.execute(redisScript, keys, capacity, refillRate, now, requestedTokens);
+
+        if (isAllowed == null || isAllowed == 0) {
+            log.warn("Too many requests from IP {} for endpoint {}", ipAddress, endpoint);
             throw new RateLimitExceededException("Too Many Requests");
         }
+
         return joinPoint.proceed();
     }
 
