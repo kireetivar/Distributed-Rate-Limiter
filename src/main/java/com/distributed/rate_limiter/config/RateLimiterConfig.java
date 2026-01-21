@@ -1,9 +1,14 @@
 package com.distributed.rate_limiter.config;
 
 import com.distributed.rate_limiter.limiters.TokenBucketRateLimiter;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Expiry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 public class RateLimiterConfig {
@@ -20,5 +25,13 @@ public class RateLimiterConfig {
     @Bean
     public TokenBucketRateLimiter tokenBucketRateLimiter() {
         return new TokenBucketRateLimiter(capacity, refillRate);
+    }
+
+    @Bean
+    public Cache<String, TokenBucketRateLimiter> rateLimitCache() {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(1, TimeUnit.MINUTES)
+                .maximumSize(10000)
+                .build();
     }
 }
