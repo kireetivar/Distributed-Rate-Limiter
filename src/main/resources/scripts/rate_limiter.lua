@@ -8,8 +8,10 @@
 local key = KEYS[1]
 local capacity = tonumber(ARGV[1])
 local refill_rate = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
-local requested = tonumber(ARGV[4])
+local requested = tonumber(ARGV[3])
+
+local redis_time = redis.call('TIME')
+local now = tonumber(redis_time[1])
 
 local last_tokens = tonumber(redis.call('hget', key, 'tokens'))
 local last_refill = tonumber(redis.call('hget', key, 'last_refill'))

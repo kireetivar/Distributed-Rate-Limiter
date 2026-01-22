@@ -57,13 +57,12 @@ public class RateLimitAspect {
 
         String capacity = String.valueOf(rateLimitAnnotation.capacity());
         String refillRate = String.valueOf(rateLimitAnnotation.refillRate());
-        String now = String.valueOf(Instant.now().getEpochSecond());
         String requestedTokens = "1";
 
         Long isAllowed = 0L;
 
         try{
-            isAllowed = template.execute(redisScript, keys, capacity, refillRate, now, requestedTokens);
+            isAllowed = template.execute(redisScript, keys, capacity, refillRate, requestedTokens);
         } catch (Exception e) {
             log.error("Redis Rate Limiter is down! Allowing request through. Error: {}", e.getMessage());
             isAllowed = 1L;
